@@ -27,6 +27,7 @@ for the prototype.
 """
 
 import os
+import shutil
 from pathlib import Path
 
 from google.adk.agents import Agent
@@ -39,24 +40,30 @@ from mcp import StdioServerParameters
 
 from .tools import parse_python_file, extract_code_issues
 
-# ---------------------------------------------------------------------------
-# Workspace root — the MCP server is sandboxed to this directory.
-# The server will refuse to read files outside this path.
-# Adjust if you want to review files from a different location.
-# ---------------------------------------------------------------------------
+# MCP server is sandboxed to this directory; files outside this path are inaccessible.
 WORKSPACE_ROOT = str(Path(__file__).resolve().parents[2])  # two levels up from app/
 
 # ---------------------------------------------------------------------------
-# Auth configuration
+# Resolve the npx executable path at import time.
+#
+# WHY: Python's subprocess (used by the MCP library to spawn the stdio
+# server) cannot resolve bare batch-script names on Windows without
+# shell=True. On Windows, npx is installed as "npx.cmd" — a batch file,
+# not a native .exe. shutil.which() looks it up from the system PATH and
+# returns the fully-qualified path (e.g. C:\Program Files\nodejs\npx.cmd),
+# which subprocess can always exec directly, with or without shell=True.
+# On macOS/Linux, "npx" is a regular executable and which() finds it too.
+# The hardcoded fallback handles the case where Node is installed but not
+# yet on the PATH of the current process (e.g. spawned from a VS Code
+# extension before the user's shell profile has been sourced).
 # ---------------------------------------------------------------------------
-# Using Gemini API Key (aistudio.google.com) for the prototype.
-# GEMINI_API_KEY must be set in the environment before running.
-# ---------------------------------------------------------------------------
-os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "False"
+_NPX_CMD: str = (
+    shutil.which("npx.cmd")                      # Windows (Node on PATH)
+    or shutil.which("npx")                       # macOS / Linux
+    or r"C:\Program Files\nodejs\npx.cmd"        # Windows fallback (default install)
+)
 
-# ---------------------------------------------------------------------------
-# System instruction
-# ---------------------------------------------------------------------------
+os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "False"
 
 SYSTEM_INSTRUCTION = """\
 You are localcode-optimizer, an expert Python code reviewer specialising in
@@ -120,10 +127,6 @@ Provide 2–3 sentences of rationale citing specific findings.
   analysis rather than calling the tools again.
 """
 
-# ---------------------------------------------------------------------------
-# Agent definition
-# ---------------------------------------------------------------------------
-
 root_agent = Agent(
     name="localcode_optimizer",
     model=Gemini(
@@ -132,17 +135,14 @@ root_agent = Agent(
     ),
     instruction=SYSTEM_INSTRUCTION,
     tools=[
-        # AST analysis tools — pure Python, run in-process
         parse_python_file,
         extract_code_issues,
 
-        # MCP FileSystem server — spawned automatically by ADK via stdio.
-        # Scoped to WORKSPACE_ROOT; only read-only tools are exposed.
-        # Requires Node.js / npx on PATH (installed during setup).
+        # MCP FileSystem server — spawned by ADK via stdio, scoped to WORKSPACE_ROOT.
         MCPToolset(
             connection_params=StdioConnectionParams(
                 server_params=StdioServerParameters(
-                    command="npx",
+                    command=_NPX_CMD,
                     args=[
                         "-y",
                         "@modelcontextprotocol/server-filesystem",
@@ -163,11 +163,7 @@ root_agent = Agent(
     ],
 )
 
-# ---------------------------------------------------------------------------
-# ADK App
-# The name MUST match this directory name ("app"). Do not change it.
-# ---------------------------------------------------------------------------
-
+# App name MUST match the directory name ("app") — ADK runner derives it from path.
 app = App(
     root_agent=root_agent,
     name="app",

@@ -19,10 +19,12 @@ These tools are pure Python (no LLM calls). They are registered with the
 ADK agent in agent.py and invoked by Gemini during a review session.
 """
 
+
 import ast
 import json
-import os
+import os 
 from pathlib import Path
+
 from typing import Any
 
 # ---------------------------------------------------------------------------
@@ -92,7 +94,6 @@ def parse_python_file(file_path: str) -> dict[str, Any]:
     """
     path = _resolve(file_path)
 
-    # --- Read source ---
     try:
         source = path.read_text(encoding="utf-8")
     except FileNotFoundError:
@@ -103,7 +104,6 @@ def parse_python_file(file_path: str) -> dict[str, Any]:
     lines = source.splitlines()
     line_count = len(lines)
 
-    # --- Parse AST ---
     try:
         tree = ast.parse(source, filename=str(path))
     except SyntaxError as exc:
@@ -113,10 +113,6 @@ def parse_python_file(file_path: str) -> dict[str, Any]:
             "line_count": line_count,
         }
 
-    # --- Single combined AST walk (replaces 3 separate passes) ---
-    # Collecting functions, classes, and imports in one O(n) traversal
-    # eliminates the nested loop that was present in the imports section
-    # (previously: outer `for node in ast.walk` + inner `for alias in node.names`).
     functions: list[dict] = []
     classes: list[dict] = []
     imports: list[str] = []
@@ -145,13 +141,11 @@ def parse_python_file(file_path: str) -> dict[str, Any]:
             })
 
         elif isinstance(node, ast.Import):
-            # extend() with a generator avoids the nested `for alias` loop
             imports.extend(alias.name for alias in node.names)
 
         elif isinstance(node, ast.ImportFrom) and node.module:
             imports.append(node.module)
 
-    # --- Complexity metrics ---
     body_lengths = [f["body_lines"] for f in functions]
     max_fn_lines = max(body_lengths, default=0)
     avg_fn_lines = round(sum(body_lengths) / len(body_lengths), 1) if body_lengths else 0.0
@@ -239,7 +233,6 @@ def extract_code_issues(file_path: str) -> list[dict[str, Any]]:
                     ),
                 })
 
-            # Missing docstring on public functions
             if not fn_name.startswith("_"):
                 first_stmt = node.body[0] if node.body else None
                 has_doc = isinstance(first_stmt, ast.Expr) and isinstance(
@@ -253,7 +246,6 @@ def extract_code_issues(file_path: str) -> list[dict[str, Any]]:
                         "detail": f"Public function '{fn_name}' has no docstring",
                     })
 
-            # Mutable default arguments
             for default in node.args.defaults + node.args.kw_defaults:
                 if default is None:
                     continue
@@ -303,12 +295,7 @@ def extract_code_issues(file_path: str) -> list[dict[str, Any]]:
             })
 
     # --- NESTED_LOOP ---
-    # Iterative stack-based DFS replaces the previous recursive closure.
-    # Benefits:
-    #   1. No Python recursion-limit risk on deeply nested source files.
-    #   2. Eliminates the two duplicated `for child in ast.iter_child_nodes`
-    #      branches that were the source of the nested-loop warning.
-    #   3. Single, linear traversal — O(n) with no hidden recursion overhead.
+    # Iterative DFS: avoids recursion-limit risk on deeply nested files, O(n).
     loop_stack: list[tuple[ast.AST, int]] = [(tree, 0)]  # (node, loop_depth)
     while loop_stack:
         current, loop_depth = loop_stack.pop()
@@ -357,7 +344,6 @@ def extract_code_issues(file_path: str) -> list[dict[str, Any]]:
             ),
         })
 
-    # Sort by line number for readability
     issues.sort(key=lambda x: x["lineno"])
     return issues
 

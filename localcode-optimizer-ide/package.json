@@ -1,0 +1,66 @@
+{
+  "name": "localcode-optimizer-ide",
+  "displayName": "LocalCode Optimizer",
+  "description": "AI-powered Python code reviewer — triggers the ADK 2.0 Gemini agent on every file save.",
+  "version": "0.0.1",
+  "publisher": "localcode",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Linters",
+    "Other"
+  ],
+  "keywords": [
+    "python",
+    "code review",
+    "refactoring",
+    "gemini",
+    "adk"
+  ],
+  "activationEvents": [
+    "onLanguage:python"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "localcode-optimizer.reviewFile",
+        "title": "LocalCode: Review Current Python File"
+      }
+    ],
+    "configuration": {
+      "title": "LocalCode Optimizer",
+      "properties": {
+        "localcode-optimizer.agentWorkingDir": {
+          "type": "string",
+          "default": "c:\\Users\\dodo7\\OneDrive\\Desktop\\the sniffer\\localcode-optimizer",
+          "description": "Absolute path to the localcode-optimizer ADK project directory."
+        },
+        "localcode-optimizer.uvPath": {
+          "type": "string",
+          "default": "uv",
+          "description": "Path to the uv executable (use full path if not on system PATH)."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/node": "20.x",
+    "@types/vscode": "^1.90.0",
+    "@typescript-eslint/eslint-plugin": "^8.3.0",
+    "@typescript-eslint/parser": "^8.3.0",
+    "@vscode/test-cli": "^0.0.10",
+    "@vscode/test-electron": "^2.4.0",
+    "eslint": "^9.9.1",
+    "typescript": "^5.5.4"
+  }
+}
