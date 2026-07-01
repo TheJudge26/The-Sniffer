@@ -95,6 +95,8 @@ function triggerReview(absoluteFilePath) {
     const config = vscode.workspace.getConfiguration('localcode-optimizer');
     const agentWorkingDir = config.get('agentWorkingDir', 'c:\\Users\\dodo7\\OneDrive\\Desktop\\the sniffer\\localcode-optimizer');
     const uvPath = config.get('uvPath', 'uv');
+    const primaryEngine = config.get('primaryEngine', 'Gemini');
+    const ollamaModelName = config.get('ollamaModelName', 'qwen2.5-coder:0.5b');
     const rel = path.relative(agentWorkingDir, absoluteFilePath);
     const filePathForPrompt = rel.startsWith('..') || path.isAbsolute(rel)
         ? absoluteFilePath
@@ -104,9 +106,15 @@ function triggerReview(absoluteFilePath) {
     outputChannel.appendLine('');
     outputChannel.appendLine('─'.repeat(70));
     outputChannel.appendLine(`▶  LocalCode Optimizer  |  ${new Date().toLocaleTimeString()}`);
-    outputChannel.appendLine(`   File : ${filePathForPrompt}`);
-    outputChannel.appendLine(`   Dir  : ${agentWorkingDir}`);
+    outputChannel.appendLine(`   File   : ${filePathForPrompt}`);
+    outputChannel.appendLine(`   Dir    : ${agentWorkingDir}`);
+    outputChannel.appendLine(`   Engine : ${primaryEngine}${primaryEngine === 'Ollama' ? ` (${ollamaModelName})` : ''}`);
     outputChannel.appendLine('─'.repeat(70));
+    // If the user has selected Ollama as the primary engine, bypass ADK entirely.
+    if (primaryEngine === 'Ollama') {
+        runOllamaFallback(absoluteFilePath, ollamaModelName);
+        return;
+    }
     const childEnv = {
         ...process.env,
         GEMINI_API_KEY: process.env.GEMINI_API_KEY ?? '',
@@ -155,10 +163,10 @@ function triggerReview(absoluteFilePath) {
         // ── Non-zero exit → engage offline fallback ────────────────────────
         outputChannel.appendLine('');
         outputChannel.appendLine(`⚠ ADK agent exited with code ${code ?? '?'} — activating offline fallback`);
-        outputChannel.appendLine(`  → Engine : qwen2.5-coder:0.5b  (Ollama · localhost:11434)`);
+        outputChannel.appendLine(`  → Engine : ${ollamaModelName}  (Ollama · localhost:11434)`);
         outputChannel.appendLine(`  → File   : ${absoluteFilePath}`);
         outputChannel.appendLine('─'.repeat(70));
-        runOllamaFallback(absoluteFilePath);
+        runOllamaFallback(absoluteFilePath, ollamaModelName);
     });
 }
 // ---------------------------------------------------------------------------
@@ -172,7 +180,7 @@ function triggerReview(absoluteFilePath) {
  *   { "response": "<token>", "done": false }  ← intermediate chunks
  *   { "response": "", "done": true, "eval_count": N, ... }  ← final stats
  */
-function runOllamaFallback(absoluteFilePath) {
+function runOllamaFallback(absoluteFilePath, modelName = 'qwen2.5-coder:0.5b') {
     let sourceCode;
     try {
         sourceCode = fs.readFileSync(absoluteFilePath, 'utf-8');
@@ -201,7 +209,7 @@ function runOllamaFallback(absoluteFilePath) {
         (truncated ? `  (first ${MAX_LINES} lines shown)` : '') +
         `\n\n\`\`\`python\n${codeForPrompt}\n\`\`\`\n\nProvide your review:`;
     const requestBody = JSON.stringify({
-        model: 'qwen2.5-coder:0.5b',
+        model: modelName,
         prompt: ollamaPrompt,
         stream: true, // NDJSON streaming — one JSON object per line
     });
@@ -249,7 +257,7 @@ function runOllamaFallback(absoluteFilePath) {
                             : null;
                         outputChannel.appendLine('');
                         outputChannel.appendLine('');
-                        outputChannel.appendLine(`✓ Offline review complete (${obj.model ?? 'qwen2.5-coder:0.5b'})` +
+                        outputChannel.appendLine(`✓ Offline review complete (${obj.model ?? modelName})` +
                             `  |  ${new Date().toLocaleTimeString()}` +
                             (tokensPerSec !== null ? `  |  ${tokensPerSec} tok/s` : ''));
                         outputChannel.appendLine('─'.repeat(70));

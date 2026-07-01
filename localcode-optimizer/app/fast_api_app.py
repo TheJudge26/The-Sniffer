@@ -64,7 +64,6 @@ def collect_feedback(feedback: Feedback) -> dict[str, str]:
     return {"status": "success"}
 
 
-# Main execution
 if __name__ == "__main__":
     import uvicorn
 

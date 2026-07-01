@@ -26,7 +26,6 @@ import pytest
 import requests
 from requests.exceptions import RequestException
 
-# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -115,7 +114,6 @@ def server_fixture(request: Any) -> Iterator[subprocess.Popen[str]]:
 def test_chat_stream(server_fixture: subprocess.Popen[str]) -> None:
     """Test the chat stream functionality."""
     logger.info("Starting chat stream test")
-    # Create session first
     user_id = "test_user_123"
     session_data = {"state": {"preferred_language": "English", "visit_count": 1}}
 
@@ -130,7 +128,6 @@ def test_chat_stream(server_fixture: subprocess.Popen[str]) -> None:
     logger.info(f"Session creation response: {session_response.json()}")
     session_id = session_response.json()["id"]
 
-    # Then send chat message
     data = {
         "app_name": "app",
         "user_id": user_id,
@@ -158,7 +155,6 @@ def test_chat_stream(server_fixture: subprocess.Popen[str]) -> None:
                 events.append(event)
 
     assert events, "No events received from stream"
-    # Check for valid content in the response
     has_text_content = False
     for event in events:
         content = event.get("content")

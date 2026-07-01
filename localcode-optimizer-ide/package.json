@@ -41,6 +41,17 @@
           "type": "string",
           "default": "uv",
           "description": "Path to the uv executable (use full path if not on system PATH)."
+        },
+        "localcode-optimizer.primaryEngine": {
+          "type": "string",
+          "enum": ["Gemini", "Ollama"],
+          "default": "Gemini",
+          "description": "Preferred AI engine for code reviews. 'Gemini' uses the ADK/Gemini cloud agent (with Ollama as automatic fallback). 'Ollama' bypasses the cloud entirely and always uses the local model."
+        },
+        "localcode-optimizer.ollamaModelName": {
+          "type": "string",
+          "default": "qwen2.5-coder:0.5b",
+          "description": "Ollama model to use for local reviews (e.g. 'qwen2.5-coder:0.5b', 'codellama:7b', 'deepseek-coder:6.7b'). Must be pulled with 'ollama pull <model>' before use."
         }
       }
     }
