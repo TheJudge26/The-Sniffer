@@ -44,7 +44,10 @@
         },
         "localcode-optimizer.primaryEngine": {
           "type": "string",
-          "enum": ["Gemini", "Ollama"],
+          "enum": [
+            "Gemini",
+            "Ollama"
+          ],
           "default": "Gemini",
           "description": "Preferred AI engine for code reviews. 'Gemini' uses the ADK/Gemini cloud agent (with Ollama as automatic fallback). 'Ollama' bypasses the cloud entirely and always uses the local model."
         },
@@ -72,6 +75,6 @@
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.4.0",
     "eslint": "^9.9.1",
-    "typescript": "^5.5.4"
+    "typescript": "^5.9.3"
   }
 }
