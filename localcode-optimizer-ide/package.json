@@ -27,6 +27,10 @@
       {
         "command": "localcode-optimizer.reviewFile",
         "title": "LocalCode: Review Current Python File"
+      },
+      {
+        "command": "localcode-optimizer.showComplexityDetail",
+        "title": "LocalCode: Show Complexity Detail"
       }
     ],
     "configuration": {

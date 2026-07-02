@@ -23,6 +23,18 @@ import * as path from 'path';
 import * as os from 'os';
 
 // ---------------------------------------------------------------------------
+// Shared types
+// ---------------------------------------------------------------------------
+
+/** Shape of one entry returned by app/complexity_cli.py. */
+interface ComplexityEntry {
+  name: string;
+  lineno: number;
+  complexity: string;
+  detail: string;
+}
+
+// ---------------------------------------------------------------------------
 // Output channel — created once, reused across all reviews
 // ---------------------------------------------------------------------------
 let outputChannel: vscode.OutputChannel;
@@ -71,7 +83,45 @@ export function activate(context: vscode.ExtensionContext): void {
     }
   );
 
-  context.subscriptions.push(saveListener, reviewCommand, outputChannel);
+  // -- Big-O CodeLens setup ------------------------------------------------
+  const complexityProvider = new ComplexityCodeLensProvider();
+
+  const codeLensRegistration = vscode.languages.registerCodeLensProvider(
+    { language: 'python', scheme: 'file' },
+    complexityProvider
+  );
+
+  const complexityDetailCommand = vscode.commands.registerCommand(
+    'localcode-optimizer.showComplexityDetail',
+    (entry: ComplexityEntry) => {
+      vscode.window.showInformationMessage(
+        `${entry.name}():  ${entry.complexity}  —  ${entry.detail}`
+      );
+    }
+  );
+
+  const refreshOnSave = vscode.workspace.onDidSaveTextDocument(
+    (doc: vscode.TextDocument) => {
+      if (doc.languageId === 'python') { complexityProvider.refresh(); }
+    }
+  );
+
+  const refreshOnOpen = vscode.workspace.onDidOpenTextDocument(
+    (doc: vscode.TextDocument) => {
+      if (doc.languageId === 'python') { complexityProvider.refresh(); }
+    }
+  );
+
+  context.subscriptions.push(
+    saveListener,
+    reviewCommand,
+    outputChannel,
+    complexityProvider,
+    codeLensRegistration,
+    complexityDetailCommand,
+    refreshOnSave,
+    refreshOnOpen,
+  );
 }
 
 function triggerReview(absoluteFilePath: string): void {
@@ -363,6 +413,113 @@ function shouldShowStderrLine(line: string): boolean {
   ];
   return !noisePatterns.some((rx) => rx.test(line));
 }
+
+// ---------------------------------------------------------------------------
+// Big-O CodeLens Provider
+// ---------------------------------------------------------------------------
+
+/**
+ * Spawns app/complexity_cli.py for each Python document and renders
+ * a floating "⏱ Time Complexity: O(...)" annotation above every def.
+ *
+ * Lifecycle: one shared instance created in activate(); refresh() is called
+ * on every Python file open and save so lenses stay current.
+ */
+class ComplexityCodeLensProvider implements vscode.CodeLensProvider, vscode.Disposable {
+  private readonly _emitter = new vscode.EventEmitter<void>();
+  readonly onDidChangeCodeLenses: vscode.Event<void> = this._emitter.event;
+
+  dispose(): void {
+    this._emitter.dispose();
+  }
+
+  /** Signal VS Code to re-request lenses for all open Python documents. */
+  refresh(): void {
+    this._emitter.fire();
+  }
+
+  async provideCodeLenses(
+    document: vscode.TextDocument,
+    _token: vscode.CancellationToken
+  ): Promise<vscode.CodeLens[]> {
+    if (document.languageId !== 'python') {
+      return [];
+    }
+
+    const entries = await this._analyse(document.uri.fsPath);
+    const lenses: vscode.CodeLens[] = [];
+
+    for (const entry of entries) {
+      if (entry.name === 'ERROR' || entry.name === 'SYNTAX_ERROR') {
+        continue;
+      }
+
+      // Python AST line numbers are 1-indexed; VS Code ranges are 0-indexed.
+      const line = Math.max(0, entry.lineno - 1);
+      const range = new vscode.Range(line, 0, line, 0);
+
+      lenses.push(
+        new vscode.CodeLens(range, {
+          title: `⏱ Time Complexity: ${entry.complexity}`,
+          tooltip: entry.detail,
+          command: 'localcode-optimizer.showComplexityDetail',
+          arguments: [entry],
+        })
+      );
+    }
+
+    return lenses;
+  }
+
+  /**
+   * Spawn `uv run python -m app.complexity_cli <filePath>` and parse stdout
+   * as a JSON array of ComplexityEntry objects.
+   *
+   * Returns an empty array (never throws) so a broken backend never breaks
+   * the editor experience — lenses simply disappear until the issue is fixed.
+   */
+  private _analyse(filePath: string): Promise<ComplexityEntry[]> {
+    return new Promise((resolve) => {
+      const config = vscode.workspace.getConfiguration('localcode-optimizer');
+      const agentWorkingDir: string = config.get(
+        'agentWorkingDir',
+        'c:\\Users\\dodo7\\OneDrive\\Desktop\\the sniffer\\localcode-optimizer'
+      );
+      const uvPath: string = config.get('uvPath', 'uv');
+
+      let stdout = '';
+
+      const child = spawn(
+        uvPath,
+        ['run', 'python', '-m', 'app.complexity_cli', filePath],
+        {
+          cwd: agentWorkingDir,
+          env: { ...process.env, PATH: buildPath() },
+          shell: true,
+          windowsHide: true,
+        }
+      );
+
+      child.stdout?.on('data', (data: Buffer) => { stdout += data.toString(); });
+
+      child.on('close', () => {
+        try {
+          const parsed = JSON.parse(stdout) as ComplexityEntry[];
+          resolve(Array.isArray(parsed) ? parsed : []);
+        } catch {
+          // Malformed JSON (e.g. uv printed a warning before the payload)
+          resolve([]);
+        }
+      });
+
+      child.on('error', () => resolve([]));
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Deactivate
+// ---------------------------------------------------------------------------
 
 export function deactivate(): void {
   for (const child of activeProcesses) {

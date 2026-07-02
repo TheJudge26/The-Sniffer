@@ -65,6 +65,24 @@ _NPX_CMD: str = (
 
 os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "False"
 
+# ---------------------------------------------------------------------------
+# Startup key validator — fail fast with a clear message.
+# ---------------------------------------------------------------------------
+# .strip() removes any trailing \r, \n, or space that Windows environment
+# tools can silently append, which causes a 401 UNAUTHENTICATED rejection
+# even when the key value looks correct in a print() call.
+_api_key = os.environ.get("GEMINI_API_KEY", "").strip()
+if not _api_key:
+    raise RuntimeError(
+        "\n\n[localcode-optimizer] GEMINI_API_KEY is not set.\n"
+        "Run this in PowerShell, then fully restart VS Code:\n\n"
+        '  [System.Environment]::SetEnvironmentVariable('
+        '"GEMINI_API_KEY", "YOUR_KEY", "User")\n'
+    )
+# Write the cleaned value back so every downstream library reads the same string.
+os.environ["GEMINI_API_KEY"] = _api_key
+
+
 SYSTEM_INSTRUCTION = """\
 You are localcode-optimizer, a coordinator agent specialising in Python code
 review, refactoring, and performance optimisation. You aggregate findings from
@@ -175,7 +193,10 @@ root_agent = Agent(
     name="localcode_optimizer",
     model=Gemini(
         model="gemini-2.0-flash",
-        retry_options=types.HttpRetryOptions(attempts=3),
+        retry_options=types.HttpRetryOptions(
+            attempts=2,
+            initial_delay=2.0,
+        ),
     ),
     instruction=SYSTEM_INSTRUCTION,
     tools=[
@@ -189,7 +210,11 @@ root_agent = Agent(
                     command=_NPX_CMD,
                     args=[
                         "-y",
-                        "@modelcontextprotocol/server-filesystem",
+                        # 0.6.2 is the last release that depends on zod v3
+                        # (via zod-to-json-schema@^3.23.5). All 2025.x+ versions
+                        # pull in zod v4, which removed the zod/v3 sub-path
+                        # export that causes the ERR_UNSUPPORTED_DIR_IMPORT crash.
+                        "@modelcontextprotocol/server-filesystem@0.6.2",
                         WORKSPACE_ROOT,
                     ],
                 ),
